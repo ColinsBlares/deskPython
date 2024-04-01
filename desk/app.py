@@ -7,10 +7,14 @@ from tkinter import ttk
 from tkinter import messagebox, Toplevel
 from PIL import Image, ImageTk
 import sqlite3
+
+from reportlab.graphics.barcode import code128
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.units import mm
+
 
 pdfmetrics.registerFont(TTFont('Arial', 'Arial.ttf'))
 pdfmetrics.registerFont(TTFont('Arial-Bold', 'Arial.ttf'))
@@ -219,6 +223,7 @@ class OrderApp(tk.Tk):
 
         tk.Label(self.confirm_window, text="Подтверждение заказа:").pack()
 
+        # Предполагается, что self.order уже определён в другом месте вашего класса
         for product, info in self.order.items():
             tk.Label(self.confirm_window,
                      text=f"{product}: {info['qty']} шт. - {info['price'] * info['qty']} руб.").pack()
@@ -232,11 +237,16 @@ class OrderApp(tk.Tk):
         self.pickup_combobox.pack()
 
         confirm_button = tk.Button(self.confirm_window, text="Оформить заказ",
-                                   command=lambda: self.finalize_order(self.confirm_window, total_price,
-                                                                       self.pickup_combobox.get()))
-
+                                   command=lambda: self.check_pickup_point_and_finalize_order(total_price))
         confirm_button.pack()
         self.order_window.destroy()
+
+    def check_pickup_point_and_finalize_order(self, total_price):
+        pickup_point = self.pickup_combobox.get()
+        if pickup_point == "":
+            messagebox.showwarning("Ошибка", "Пожалуйста, выберите пункт выдачи.")
+        else:
+            self.finalize_order(self.confirm_window, total_price, pickup_point)
 
     def finalize_order(self, confirm_window, total_price, pickup_point):
         if not self.order:
@@ -279,7 +289,6 @@ class OrderApp(tk.Tk):
         self.update_order_button()
 
     def save_order_to_pdf(self, order_number, total_price, pickup_point, delivery_time, retrieval_code, order_content):
-
         filename = f"Order_{order_number}.pdf"
         c = canvas.Canvas(filename, pagesize=letter)
         c.setFont("Arial", 12)
@@ -287,7 +296,6 @@ class OrderApp(tk.Tk):
         c.drawString(100, 735, f"Дата: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         c.drawString(100, 720, f"Пункт выдачи: {pickup_point}")
         c.drawString(100, 705, f"Срок доставки: {delivery_time} дней")
-
         c.drawString(100, 690, "Список товаров:")
 
         y = 675
@@ -296,12 +304,14 @@ class OrderApp(tk.Tk):
             y -= 15
 
         c.drawString(100, y - 15, f"Общая стоимость: {total_price} руб.")
-
         c.setFont("Arial-Bold", 14)
-
         c.drawString(100, y - 45, f"Код получения: {retrieval_code}")
-        c.setFont("Arial", 12)
 
+        # Создание и добавление штрих-кода
+        barcode = code128.Code128(retrieval_code, barWidth=0.5 * mm, barHeight=10 * mm)
+        barcode.drawOn(c, 100, y - 75)
+
+        c.setFont("Arial", 12)
         c.showPage()
         c.save()
 
